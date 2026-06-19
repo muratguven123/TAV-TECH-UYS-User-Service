@@ -1,3 +1,6 @@
+CREATE SCHEMA IF NOT EXISTS "user-service";
+SET search_path TO "user-service";
+
 DROP TRIGGER IF EXISTS trg_users_update_timestamp ON users;
 DROP FUNCTION IF EXISTS fn_update_users_timestamp();
 DROP TABLE IF EXISTS user_roles;
