@@ -12,6 +12,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -34,13 +35,38 @@ public class JwtTokenProvider {
                 .collect(Collectors.toSet());
 
         Date now = new Date();
+        Date expiry = new Date(now.getTime() + validityMs);
+
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())   // jti — revocation için benzersiz ID
                 .subject(authentication.getName())
                 .claim("roles", roles)
                 .issuedAt(now)
-                .expiration(new Date(now.getTime() + validityMs))
+                .expiration(expiry)
                 .signWith(secretKey)
                 .compact();
+    }
+
+    /**
+     * Token'ın claims'ini döner. Gateway tarafından kullanılır.
+     * Geçersiz token'da JwtException fırlatır.
+     */
+    public Claims parseClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
+    public boolean validate(String token) {
+        try {
+            parseClaims(token);
+            return true;
+        } catch (JwtException | IllegalArgumentException e) {
+            log.warn("Geçersiz JWT: {}", e.getMessage());
+            return false;
+        }
     }
 
     public long getValidityMs() {
