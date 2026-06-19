@@ -1,4 +1,4 @@
-server:
+openssl rand -base64 32server:
   port: 8081
   ssl:
     enabled: true
