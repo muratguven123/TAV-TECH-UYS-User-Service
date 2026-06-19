@@ -1,4 +1,6 @@
 target/
+**/keystore.*
+**/truststore.*
 .mvn/wrapper/maven-wrapper.jar
 *.iws
 *.iml
