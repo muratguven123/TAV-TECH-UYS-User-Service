@@ -1,7 +1,11 @@
 package com.tav.userservice.entity;
 
+/**
+ * Sistem rolleri.
+ * Authority olarak "ROLE_" + name() formatında kullanılır.
+ * Keycloak'a geçişte bu değerler realm role'larıyla eşleşecek.
+ */
 public enum RoleName {
-    ROLE_ADMIN,
-    ROLE_OPERATOR,
-    ROLE_ANALYST
+    OPERATION_OFFICER,
+    BI_SPECIALIST
 }
