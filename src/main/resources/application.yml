@@ -39,6 +39,15 @@ app:
   jwt:
     secret: ${JWT_SECRET:tav-uys-super-secret-key-minimum-32-bytes-long!}
     expiration-ms: ${JWT_EXPIRATION_MS:3600000}
+  bootstrap:
+    internal-users: ${BOOTSTRAP_INTERNAL_USERS:true}
+  internal-users:
+    flight-service:
+      username: ${INTERNAL_USER_FLIGHT:flight-service-internal}
+      password: ${INTERNAL_PASS_FLIGHT:Internal-Sv1!ChangeMe}
+    fas:
+      username: ${INTERNAL_USER_FAS:fas-internal}
+      password: ${INTERNAL_PASS_FAS:Internal-Fa1!ChangeMe}
 
 management:
   endpoints:
