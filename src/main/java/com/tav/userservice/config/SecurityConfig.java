@@ -1,5 +1,7 @@
 package com.tav.userservice.config;
 
+import com.tav.userservice.security.GatewayAuthFilter;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -12,16 +14,22 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * user-service stateless'tir. /api/auth/** herkese açık.
- * Diğer endpoint'ler (örn. /api/users/**) ileride admin token ile korunacak.
- * Şimdilik /api/auth/** açık, gerisi de açık — iç ağ ve gateway koruması yeterli.
+ * user-service stateless gateway pattern security.
+ *
+ * /api/auth/**  → herkese açık (login, register, logout)
+ * /api/users/** → GatewayAuthFilter ile korunur (X-Gateway-Secret zorunlu)
+ * Swagger/actuator → açık
  */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final GatewayAuthFilter gatewayAuthFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -29,9 +37,18 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/actuator/health").permitAll()
-                        .anyRequest().permitAll()
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/actuator/health",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/webjars/**"
+                        ).permitAll()
+                        .anyRequest().authenticated()
                 )
+                .addFilterBefore(gatewayAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
 
