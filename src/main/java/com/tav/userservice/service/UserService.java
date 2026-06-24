@@ -6,9 +6,11 @@ import com.tav.userservice.entity.Role;
 import com.tav.userservice.entity.RoleName;
 import com.tav.userservice.entity.User;
 import com.tav.userservice.entity.UserRole;
+import com.tav.userservice.event.UserCreatedEvent;
 import com.tav.userservice.repository.RoleRepository;
 import com.tav.userservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public UserDto createUser(UserCreateRequest request) {
@@ -51,6 +54,15 @@ public class UserService {
             }
             userRepository.save(saved);
         }
+
+        // Event publish et — Keycloak sync transaction COMMIT'ten sonra çalışır.
+        // Bu sayede DB connection, HTTP çağrısı sırasında pool'a geri döner.
+        eventPublisher.publishEvent(new UserCreatedEvent(
+                request.getUsername(),
+                request.getEmail(),
+                request.getPassword(),
+                request.getRoles()
+        ));
 
         // DB'den tekrar oku — created_at/updated_at trigger/DEFAULT değerlerini getirir
         return toDto(userRepository.findByIdWithRoles(saved.getId())

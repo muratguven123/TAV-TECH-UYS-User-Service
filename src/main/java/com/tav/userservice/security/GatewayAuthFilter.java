@@ -15,6 +15,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -61,9 +63,9 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String gatewaySecret = request.getHeader("X-Gateway-Secret");
-        if (!StringUtils.hasText(gatewaySecret) || !gatewaySecret.equals(expectedGatewaySecret)) {
+        if (!StringUtils.hasText(gatewaySecret) || !secretsEqual(gatewaySecret, expectedGatewaySecret)) {
             log.warn("Geçersiz ya da eksik X-Gateway-Secret: {}", request.getRequestURI());
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            writeUnauthorized(response);
             return;
         }
 
@@ -72,7 +74,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
 
         if (!StringUtils.hasText(username)) {
             log.warn("X-User-Name header eksik: {}", request.getRequestURI());
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            writeUnauthorized(response);
             return;
         }
 
@@ -89,5 +91,25 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(auth);
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Timing-safe karşılaştırma. String.equals() karakter sayısı veya ilk farklı karakter
+     * pozisyonuna göre erken döner; MessageDigest.isEqual() sabit zamanlıdır.
+     */
+    private boolean secretsEqual(String provided, String expected) {
+        if (provided == null || expected == null) {
+            return false;
+        }
+        byte[] a = provided.getBytes(StandardCharsets.UTF_8);
+        byte[] b = expected.getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(a, b);
+    }
+
+    private void writeUnauthorized(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json");
+        response.getWriter().write("{\"error\":\"Unauthorized\"}");
+        response.getWriter().flush();
     }
 }

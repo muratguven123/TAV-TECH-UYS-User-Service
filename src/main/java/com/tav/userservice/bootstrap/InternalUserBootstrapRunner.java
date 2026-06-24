@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "app.bootstrap.internal-users", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "app.bootstrap.internal-users", havingValue = "true", matchIfMissing = false)
 @Slf4j
 public class InternalUserBootstrapRunner implements ApplicationRunner {
 

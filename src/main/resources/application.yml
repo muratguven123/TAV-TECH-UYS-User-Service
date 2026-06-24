@@ -19,13 +19,6 @@ spring:
     properties:
       hibernate:
         default_schema: user-service
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:redis_secret}
-      timeout: 2000ms
-
 eureka:
   client:
     service-url:
@@ -35,19 +28,15 @@ eureka:
 
 app:
   gateway:
-    secret: ${GATEWAY_SECRET:tav-gateway-internal-secret-change-in-prod}
-  jwt:
-    secret: ${JWT_SECRET:tav-uys-super-secret-key-minimum-32-bytes-long!}
-    expiration-ms: ${JWT_EXPIRATION_MS:3600000}
+    secret: ${GATEWAY_SECRET}
   bootstrap:
-    internal-users: ${BOOTSTRAP_INTERNAL_USERS:true}
-  internal-users:
-    flight-service:
-      username: ${INTERNAL_USER_FLIGHT:flight-service-internal}
-      password: ${INTERNAL_PASS_FLIGHT:Internal-Sv1!ChangeMe}
-    fas:
-      username: ${INTERNAL_USER_FAS:fas-internal}
-      password: ${INTERNAL_PASS_FAS:Internal-Fa1!ChangeMe}
+    internal-users: false   # Keycloak entegrasyonu — internal kullanıcı bootstrap devre dışı
+  keycloak:
+    server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8090}
+    realm: uys
+    admin-username: ${KEYCLOAK_ADMIN:admin}
+    admin-password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
+    client-id: admin-cli
 
 management:
   endpoints:
@@ -60,7 +49,3 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
-
-
-  gateway:
-    url: ${GATEWAY_URL:http://localhost:8080}
