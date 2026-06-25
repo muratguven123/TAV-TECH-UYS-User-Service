@@ -1,0 +1,101 @@
+{
+  "realm": "uys-test",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 3600,
+  "roles": {
+    "realm": [
+      {
+        "name": "OPERATION_OFFICER",
+        "description": "Operations Officer",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "BI_SPECIALIST",
+        "description": "BI Specialist",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "ADMIN",
+        "description": "Sistem Yoneticisi",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "uys-gateway",
+      "name": "UYS API Gateway (Test)",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "test-gateway-client-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "preferred-username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "username",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "email": "testuser@uys-test.local",
+      "firstName": "Test",
+      "lastName": "Officer",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "testpass", "temporary": false}],
+      "realmRoles": ["OPERATION_OFFICER"]
+    },
+    {
+      "username": "biuser",
+      "email": "biuser@uys-test.local",
+      "firstName": "Test",
+      "lastName": "BI",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{"type": "password", "value": "testpass", "temporary": false}],
+      "realmRoles": ["BI_SPECIALIST"]
+    }
+  ]
+}

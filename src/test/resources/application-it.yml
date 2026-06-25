@@ -1,0 +1,39 @@
+# IT (Integration Test) profili — Testcontainers ile PostgreSQL + Keycloak
+spring:
+  config:
+    import: ""
+  cloud:
+    config:
+      enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:db/test-seed.sql
+
+eureka:
+  client:
+    enabled: false
+
+# Gerçek değerler DynamicPropertySource ile set edilir (KeycloakTestContainer)
+app:
+  gateway:
+    secret: test-gateway-secret
+  bootstrap:
+    internal-users: false
+  keycloak:
+    realm: uys-test
+    admin-username: admin
+    admin-password: admin
+    client-id: admin-cli
+    server-url: http://localhost:8090  # DynamicPropertySource override eder
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
