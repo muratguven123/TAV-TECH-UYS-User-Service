@@ -10,6 +10,10 @@ spring:
       ddl-auto: create-drop
     open-in-view: false
     database-platform: org.hibernate.dialect.PostgreSQLDialect
+    defer-datasource-initialization: true
+    properties:
+      hibernate:
+        default_schema: public
   sql:
     init:
       mode: always

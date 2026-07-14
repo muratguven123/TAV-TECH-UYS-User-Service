@@ -1,6 +1,6 @@
 package com.tav.userservice.event;
 
-import com.tav.userservice.service.KeycloakUserSyncService;
+import com.tav.userservice.event.KeycloakSyncExecutor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -8,34 +8,34 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * UserCreatedEvent'i transaction COMMIT'ten sonra dinler.
+ * DEF-001 FIX:
  *
- * @TransactionalEventListener(phase = AFTER_COMMIT) garantisi:
- *   - DB transaction commit olmadan bu metod çalışmaz.
- *   - DB connection, Keycloak HTTP çağrısından önce pool'a geri döner.
- *   - Keycloak başarısız olursa DB rollback edilemez; hata loglanır.
+ * Kullanıcı is_active=false yaratılır → Keycloak sync → başarılıysa is_active=true.
+ *
+ * Retry + Transactional mantığı KeycloakSyncExecutor'a taşındı.
+ * Nedeni: @Retryable ve @Transactional yalnızca Spring proxy üzerinden çalışır.
+ * Aynı sınıf içinde this.syncWithRetry() çağrısı proxy'yi bypass ederdi.
+ *
+ * DEF-002 FIX: Şifre PendingPasswordStore'dan consume() ile alınır.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class KeycloakSyncEventListener {
 
-    private final KeycloakUserSyncService keycloakUserSyncService;
+    private final PendingPasswordStore pendingPasswordStore;
+    private final KeycloakSyncExecutor keycloakSyncExecutor;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onUserCreated(UserCreatedEvent event) {
-        try {
-            keycloakUserSyncService.createUser(
-                    event.username(),
-                    event.email(),
-                    event.password(),
-                    event.roles()
-            );
-        } catch (Exception ex) {
-            // DB commit oldu; Keycloak senkronizasyonu başarısız.
-            // Kullanıcı local DB'de var ama Keycloak'ta yok — manuel müdahale gerekebilir.
-            log.error("Keycloak senkronizasyonu başarısız — kullanıcı={}, hata={}",
-                    event.username(), ex.getMessage(), ex);
+        String password = pendingPasswordStore.consume(event.eventId());
+        if (password == null) {
+            log.error("DEF-001: PendingPassword TTL dolmuş veya bulunamadı — " +
+                      "Keycloak sync iptal, kullanıcı disabled kalıyor: userId={}, username={}",
+                      event.userId(), event.username());
+            return;
         }
+        // Proxy üzerinden çağrı — @Retryable ve @Transactional aktif
+        keycloakSyncExecutor.syncWithRetry(event, password);
     }
 }

@@ -6,12 +6,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.RealmResource;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -21,7 +23,7 @@ import java.util.stream.Collectors;
  *
  * Akış:
  * 1. Keycloak'ta kullanıcı oluştur (POST /admin/realms/{realm}/users)
- * 2. Şifreyi geçici olmayan credential olarak set et
+ * 2. reset-password ile kalıcı şifre ata (Keycloak 26+ inline credential güvenilir değil)
  * 3. Realm rollerini ata (POST /admin/realms/{realm}/users/{id}/role-mappings/realm)
  *
  * Hata durumunda RuntimeException fırlatır → UserService @Transactional rollback devreye girer.
@@ -52,17 +54,13 @@ public class KeycloakUserSyncService {
         UserRepresentation user = new UserRepresentation();
         user.setUsername(username);
         user.setEmail(email);
+        user.setFirstName(username);
+        user.setLastName("User");
         user.setEnabled(true);
         user.setEmailVerified(true);
+        user.setRequiredActions(Collections.emptyList());
 
-        // 2. Şifreyi credential olarak set et (geçici değil)
-        CredentialRepresentation credential = new CredentialRepresentation();
-        credential.setType(CredentialRepresentation.PASSWORD);
-        credential.setValue(password);
-        credential.setTemporary(false);
-        user.setCredentials(List.of(credential));
-
-        // 3. Kullanıcıyı oluştur
+        // 2. Kullanıcıyı oluştur (şifre ayrı adımda reset-password ile atanır)
         try (Response response = realmResource.users().create(user)) {
             int status = response.getStatus();
             if (status != 201) {
@@ -73,13 +71,30 @@ public class KeycloakUserSyncService {
             }
         }
 
-        // 4. Oluşturulan kullanıcının ID'sini al
+        // 3. Oluşturulan kullanıcının ID'sini al
         String keycloakUserId = realmResource.users().search(username, true)
                 .stream()
                 .findFirst()
                 .map(UserRepresentation::getId)
                 .orElseThrow(() -> new IllegalStateException(
                         "Keycloak'ta kullanıcı oluşturuldu ama bulunamadı: " + username));
+
+        UserResource userResource = realmResource.users().get(keycloakUserId);
+
+        // 4. Şifreyi reset-password ile ata — inline credential Keycloak 26'da "Account is not fully set up" üretir
+        CredentialRepresentation credential = new CredentialRepresentation();
+        credential.setType(CredentialRepresentation.PASSWORD);
+        credential.setValue(password);
+        credential.setTemporary(false);
+        userResource.resetPassword(credential);
+
+        UserRepresentation update = userResource.toRepresentation();
+        update.setFirstName(username);
+        update.setLastName("User");
+        update.setRequiredActions(Collections.emptyList());
+        update.setEmailVerified(true);
+        update.setEnabled(true);
+        userResource.update(update);
 
         // 5. Rol ataması yap
         if (roleNames != null && !roleNames.isEmpty()) {
@@ -94,7 +109,7 @@ public class KeycloakUserSyncService {
                     })
                     .collect(Collectors.toList());
 
-            realmResource.users().get(keycloakUserId)
+            userResource
                     .roles()
                     .realmLevel()
                     .add(rolesToAssign);

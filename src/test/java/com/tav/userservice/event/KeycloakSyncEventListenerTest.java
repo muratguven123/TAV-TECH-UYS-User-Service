@@ -1,7 +1,7 @@
 package com.tav.userservice.event;
 
 import com.tav.userservice.entity.RoleName;
-import com.tav.userservice.service.KeycloakUserSyncService;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -9,62 +9,55 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Set;
+import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 /**
- * KeycloakSyncEventListener davranış testleri.
+ * KeycloakSyncEventListener sorumlulukları:
+ *   1. PendingPasswordStore'dan şifreyi al.
+ *   2. Şifre null ise → executor'ı ÇAĞIRMA.
+ *   3. Şifre varsa → executor.syncWithRetry() çağır (proxy üzerinden).
  *
- * Doğrulanan iki garanti:
- *   1. Happy path → KeycloakUserSyncService.createUser tam olarak event'teki değerlerle çağrılır.
- *   2. Keycloak çağrısı exception fırlatırsa listener bunu yutar (rethrow etmez);
- *      aksi halde Spring'in event publisher zinciri etkilenir ve DB commit olmuş işlem
- *      tutarsız bir hata akışına döner.
+ * Retry + activate mantığı KeycloakSyncExecutorTest'te test edilir.
  */
+@DisplayName("KeycloakSyncEventListener — listener yönlendirme testleri")
 @ExtendWith(MockitoExtension.class)
 class KeycloakSyncEventListenerTest {
 
     @Mock
-    private KeycloakUserSyncService keycloakUserSyncService;
+    private PendingPasswordStore pendingPasswordStore;
+
+    @Mock
+    private KeycloakSyncExecutor keycloakSyncExecutor;
 
     @InjectMocks
     private KeycloakSyncEventListener listener;
 
-    @Test
-    void onUserCreated_happyPath_delegatesToKeycloakSyncWithEventFields() {
-        UserCreatedEvent event = new UserCreatedEvent(
-                "alice",
-                "alice@example.com",
-                "s3cret",
-                Set.of(RoleName.OPERATION_OFFICER)
-        );
-
-        listener.onUserCreated(event);
-
-        verify(keycloakUserSyncService).createUser(
-                "alice",
-                "alice@example.com",
-                "s3cret",
-                Set.of(RoleName.OPERATION_OFFICER)
-        );
+    private UserCreatedEvent buildEvent(UUID eventId) {
+        return new UserCreatedEvent(eventId, 42L, "alice", "alice@example.com",
+                Set.of(RoleName.OPERATION_OFFICER));
     }
 
     @Test
-    void onUserCreated_whenKeycloakThrows_swallowsExceptionAndDoesNotRethrow() {
-        UserCreatedEvent event = new UserCreatedEvent(
-                "bob",
-                "bob@example.com",
-                "pw",
-                Set.of(RoleName.BI_SPECIALIST)
-        );
-        doThrow(new RuntimeException("Keycloak down"))
-                .when(keycloakUserSyncService)
-                .createUser("bob", "bob@example.com", "pw", Set.of(RoleName.BI_SPECIALIST));
+    @DisplayName("Şifre varsa executor.syncWithRetry çağrılır")
+    void onUserCreated_passwordPresent_callsExecutor() {
+        UUID eventId = UUID.randomUUID();
+        when(pendingPasswordStore.consume(eventId)).thenReturn("s3cret");
 
-        assertThatCode(() -> listener.onUserCreated(event)).doesNotThrowAnyException();
+        listener.onUserCreated(buildEvent(eventId));
 
-        verify(keycloakUserSyncService).createUser("bob", "bob@example.com", "pw", Set.of(RoleName.BI_SPECIALIST));
+        verify(keycloakSyncExecutor).syncWithRetry(any(UserCreatedEvent.class), eq("s3cret"));
+    }
+
+    @Test
+    @DisplayName("Şifre TTL dolmuşsa executor hiç çağrılmaz")
+    void onUserCreated_passwordExpired_neverCallsExecutor() {
+        UUID eventId = UUID.randomUUID();
+        when(pendingPasswordStore.consume(eventId)).thenReturn(null);
+
+        listener.onUserCreated(buildEvent(eventId));
+
+        verifyNoInteractions(keycloakSyncExecutor);
     }
 }

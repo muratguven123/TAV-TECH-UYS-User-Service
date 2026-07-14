@@ -2,7 +2,9 @@ package com.tav.userservice.repository;
 
 import com.tav.userservice.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,4 +24,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.userRoles ur LEFT JOIN FETCH ur.role WHERE u.isActive = true")
     List<User> findAllActive();
+
+    // DEF-001 FIX: Keycloak sync başarılı olunca kullanıcıyı aktif et
+    @Modifying
+    @Query("UPDATE User u SET u.isActive = true WHERE u.id = :userId")
+    int activateUser(@Param("userId") Long userId);
 }

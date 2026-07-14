@@ -73,6 +73,7 @@ class KeycloakUserSyncServiceTest {
         when(usersResource.search("ahmet", true)).thenReturn(List.of(existing));
 
         when(usersResource.get("kc-user-id-123")).thenReturn(userResource);
+        when(userResource.toRepresentation()).thenReturn(new UserRepresentation());
         when(userResource.roles()).thenReturn(roleMappingResource);
         when(roleMappingResource.realmLevel()).thenReturn(roleScopeResource);
 
@@ -91,13 +92,19 @@ class KeycloakUserSyncServiceTest {
         UserRepresentation sent = userCaptor.getValue();
         assertThat(sent.getUsername()).isEqualTo("ahmet");
         assertThat(sent.getEmail()).isEqualTo("ahmet@tav.aero");
+        assertThat(sent.getFirstName()).isEqualTo("ahmet");
+        assertThat(sent.getLastName()).isEqualTo("User");
         assertThat(sent.isEnabled()).isTrue();
-        // credential
-        assertThat(sent.getCredentials()).hasSize(1);
-        CredentialRepresentation cred = sent.getCredentials().get(0);
+        assertThat(sent.getCredentials()).isNullOrEmpty();
+
+        ArgumentCaptor<CredentialRepresentation> credCaptor =
+                ArgumentCaptor.forClass(CredentialRepresentation.class);
+        verify(userResource).resetPassword(credCaptor.capture());
+        CredentialRepresentation cred = credCaptor.getValue();
         assertThat(cred.getType()).isEqualTo(CredentialRepresentation.PASSWORD);
         assertThat(cred.getValue()).isEqualTo("Strong#Pass1");
         assertThat(cred.isTemporary()).isFalse();
+        verify(userResource).update(any(UserRepresentation.class));
 
         verify(roleScopeResource).add(List.of(kcRole));
     }
@@ -151,7 +158,7 @@ class KeycloakUserSyncServiceTest {
     // ----------------------------------------------------- no roles -> skip role assign
 
     @Test
-    @DisplayName("createUser: roller boşsa rol atama yapılmaz")
+    @DisplayName("createUser: roller boşsa rol atama yapılmaz, şifre yine reset-password ile atanır")
     void syncUser_whenNoRoles_skipsRoleAssignment() {
         // given
         Response response = mockResponse(201);
@@ -159,19 +166,22 @@ class KeycloakUserSyncServiceTest {
         UserRepresentation existing = new UserRepresentation();
         existing.setId("kc-1");
         when(usersResource.search("ahmet", true)).thenReturn(List.of(existing));
+        when(usersResource.get("kc-1")).thenReturn(userResource);
+        when(userResource.toRepresentation()).thenReturn(new UserRepresentation());
 
         // when
         syncService.createUser("ahmet", "a@b.c", "Strong#Pass1", Set.of());
 
         // then
-        verify(usersResource, never()).get(anyString());
+        verify(userResource).resetPassword(any(CredentialRepresentation.class));
+        verify(roleMappingResource, never()).realmLevel();
         verify(rolesResource, never()).get(anyString());
     }
 
     // ----------------------------------------------------------- credential check
 
     @Test
-    @DisplayName("createUser: parola düz metin credential olarak Keycloak'a iletilir")
+    @DisplayName("createUser: parola reset-password endpoint'i ile Keycloak'a iletilir")
     void syncUser_propagatesPasswordAsCredential() {
         // given
         Response response = mockResponse(201);
@@ -179,14 +189,16 @@ class KeycloakUserSyncServiceTest {
         UserRepresentation existing = new UserRepresentation();
         existing.setId("kc-1");
         when(usersResource.search("u", true)).thenReturn(List.of(existing));
+        when(usersResource.get("kc-1")).thenReturn(userResource);
+        when(userResource.toRepresentation()).thenReturn(new UserRepresentation());
 
         // when
         syncService.createUser("u", "u@x.y", "MyPass#9", Set.of());
 
         // then
-        ArgumentCaptor<UserRepresentation> cap = ArgumentCaptor.forClass(UserRepresentation.class);
-        verify(usersResource).create(cap.capture());
-        assertThat(cap.getValue().getCredentials().get(0).getValue()).isEqualTo("MyPass#9");
+        ArgumentCaptor<CredentialRepresentation> cap = ArgumentCaptor.forClass(CredentialRepresentation.class);
+        verify(userResource).resetPassword(cap.capture());
+        assertThat(cap.getValue().getValue()).isEqualTo("MyPass#9");
     }
 
     // ------------------------------------------------------------------ helpers

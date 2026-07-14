@@ -14,11 +14,22 @@ public class PasswordConstraintValidator implements ConstraintValidator<ValidPas
 
         List<String> violations = new ArrayList<>();
         if (password.length() < 8 || password.length() > 64) violations.add("8-64 karakter olmalı");
-        if (!password.matches(".*[A-Z].*")) violations.add("en az 1 büyük harf");
-        if (!password.matches(".*[a-z].*")) violations.add("en az 1 küçük harf");
-        if (!password.matches(".*[0-9].*")) violations.add("en az 1 rakam");
-        if (!password.matches(".*[^a-zA-Z0-9].*")) violations.add("en az 1 özel karakter");
-        if (password.contains(" ")) violations.add("boşluk içermemeli");
+
+        boolean hasUpper = false, hasLower = false, hasDigit = false, hasSpecial = false, hasSpace = false;
+        for (int i = 0; i < password.length(); i++) {
+            char c = password.charAt(i);
+            if (Character.isUpperCase(c)) hasUpper = true;
+            else if (Character.isLowerCase(c)) hasLower = true;
+            else if (Character.isDigit(c)) hasDigit = true;
+            else if (c == ' ') hasSpace = true;
+            else hasSpecial = true;
+        }
+
+        if (!hasUpper) violations.add("en az 1 büyük harf");
+        if (!hasLower) violations.add("en az 1 küçük harf");
+        if (!hasDigit) violations.add("en az 1 rakam");
+        if (!hasSpecial) violations.add("en az 1 özel karakter");
+        if (hasSpace) violations.add("boşluk içermemeli");
 
         if (!violations.isEmpty()) {
             context.disableDefaultConstraintViolation();

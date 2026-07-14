@@ -5,6 +5,7 @@ import com.tav.userservice.dto.UserDto;
 import com.tav.userservice.entity.Role;
 import com.tav.userservice.entity.RoleName;
 import com.tav.userservice.entity.User;
+import com.tav.userservice.event.PendingPasswordStore;
 import com.tav.userservice.event.UserCreatedEvent;
 import com.tav.userservice.repository.RoleRepository;
 import com.tav.userservice.repository.UserRepository;
@@ -23,6 +24,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -37,6 +39,8 @@ class UserServiceTest {
     @Mock RoleRepository roleRepository;
     @Mock PasswordEncoder passwordEncoder;
     @Mock ApplicationEventPublisher eventPublisher;
+    // FIX: DEF-002 — PendingPasswordStore mock'u eklendi
+    @Mock PendingPasswordStore pendingPasswordStore;
 
     @InjectMocks UserService userService;
 
@@ -69,6 +73,8 @@ class UserServiceTest {
 
         // then
         verify(userRepository, atLeastOnce()).save(any(User.class));
+        // FIX: DEF-002 — şifre store'a koyuldu mu? event publish edildi mi?
+        verify(pendingPasswordStore).put(any(UUID.class), eq(TestDataFactory.PASSWORD));
         verify(eventPublisher).publishEvent(any(UserCreatedEvent.class));
         assertThat(result).isNotNull();
         assertThat(result.getUsername()).isEqualTo(TestDataFactory.USERNAME);
@@ -161,14 +167,18 @@ class UserServiceTest {
         // when
         userService.createUser(request);
 
-        // then
+        // then — FIX: DEF-002 — event'te password() alanı artık yok; eventId, username, email, roles var
         ArgumentCaptor<UserCreatedEvent> eventCaptor = ArgumentCaptor.forClass(UserCreatedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         UserCreatedEvent evt = eventCaptor.getValue();
         assertThat(evt.username()).isEqualTo(TestDataFactory.USERNAME);
         assertThat(evt.email()).isEqualTo(TestDataFactory.EMAIL);
-        assertThat(evt.password()).isEqualTo(TestDataFactory.PASSWORD);
+        assertThat(evt.eventId()).isNotNull();
         assertThat(evt.roles()).containsExactly(RoleName.OPERATION_OFFICER);
+        // DEF-001: userId event'te taşınmalı
+        assertThat(evt.userId()).isNotNull();
+        // DEF-002: store'a put çağrısı yapıldı ve eventId ile eşleşti
+        verify(pendingPasswordStore).put(eq(evt.eventId()), eq(TestDataFactory.PASSWORD));
     }
 
     @Test
@@ -189,6 +199,31 @@ class UserServiceTest {
         // then
         verify(roleRepository, never()).findByName(any());
         verify(eventPublisher).publishEvent(any(UserCreatedEvent.class));
+    }
+
+    @Test
+    @DisplayName("createUser: ADMIN rolüyle kullanıcı oluşturulur (RoleName.ADMIN artık geçerli)")
+    void createUser_withAdminRole_savesAndPublishesEvent() {
+        // given
+        UserCreateRequest adminReq = TestDataFactory.buildCreateRequest(Set.of(RoleName.ADMIN));
+        when(userRepository.existsByUsername(anyString())).thenReturn(false);
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(passwordEncoder.encode(anyString())).thenReturn(TestDataFactory.ENCODED_PASSWORD);
+        when(userRepository.save(any(User.class))).thenReturn(savedUser);
+        when(roleRepository.findByName(RoleName.ADMIN))
+                .thenReturn(Optional.of(TestDataFactory.buildRole(RoleName.ADMIN)));
+        when(userRepository.findByIdWithRoles(any()))
+                .thenReturn(Optional.of(TestDataFactory.buildUserWithRoles(RoleName.ADMIN)));
+
+        // when
+        UserDto result = userService.createUser(adminReq);
+
+        // then — ADMIN rolü DB'den çözülür, event ve DTO ADMIN taşır
+        verify(roleRepository).findByName(RoleName.ADMIN);
+        ArgumentCaptor<UserCreatedEvent> eventCaptor = ArgumentCaptor.forClass(UserCreatedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().roles()).containsExactly(RoleName.ADMIN);
+        assertThat(result.getRoles()).contains(RoleName.ADMIN);
     }
 
     // ----------------------------------------------------------- getUserById

@@ -6,6 +6,7 @@ import com.tav.userservice.entity.Role;
 import com.tav.userservice.entity.RoleName;
 import com.tav.userservice.entity.User;
 import com.tav.userservice.entity.UserRole;
+import com.tav.userservice.event.PendingPasswordStore;
 import com.tav.userservice.event.UserCreatedEvent;
 import com.tav.userservice.repository.RoleRepository;
 import com.tav.userservice.repository.UserRepository;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -27,6 +29,8 @@ public class UserService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final ApplicationEventPublisher eventPublisher;
+    // FIX: DEF-002 — şifreyi event nesnesine koymak yerine store üzerinden taşı
+    private final PendingPasswordStore pendingPasswordStore;
 
     @Transactional
     public UserDto createUser(UserCreateRequest request) {
@@ -41,7 +45,10 @@ public class UserService {
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setIsActive(true);
+        // DEF-001 FIX: Kullanıcıyı disabled olarak yarat.
+        // Keycloak sync başarılı olunca activateUser() ile true yapılır.
+        // Başarısız olursa kullanıcı DB'de var ama sisteme giremez → tutarlı state.
+        user.setIsActive(false);
 
         User saved = userRepository.save(user);
 
@@ -55,12 +62,17 @@ public class UserService {
             userRepository.save(saved);
         }
 
+        // FIX: DEF-002 — şifreyi event'e koymak yerine store'a koy; event yalnızca eventId taşır.
+        UUID eventId = UUID.randomUUID();
+        pendingPasswordStore.put(eventId, request.getPassword());
+
         // Event publish et — Keycloak sync transaction COMMIT'ten sonra çalışır.
         // Bu sayede DB connection, HTTP çağrısı sırasında pool'a geri döner.
         eventPublisher.publishEvent(new UserCreatedEvent(
+                eventId,
+                saved.getId(),          // DEF-001: userId eklendi — listener activate edebilsin
                 request.getUsername(),
                 request.getEmail(),
-                request.getPassword(),
                 request.getRoles()
         ));
 

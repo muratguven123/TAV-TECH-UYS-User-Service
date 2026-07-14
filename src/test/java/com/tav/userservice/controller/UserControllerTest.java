@@ -12,15 +12,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+
+import org.mockito.ArgumentCaptor;
 
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -32,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration.class,
                 org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration.class
         })
+@Import(com.tav.userservice.common.exception.GlobalExceptionHandler.class)
 @AutoConfigureMockMvc(addFilters = false)
 @TestPropertySource(properties = "app.gateway.secret=test-secret")
 class UserControllerTest {
@@ -100,6 +106,67 @@ class UserControllerTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.username").value(TestDataFactory.USERNAME));
+    }
+
+    @Test
+    @DisplayName("POST /api/users: ADMIN rolüyle kullanıcı 201 döner ve rol servise geçer")
+    void createUser_withAdminRole_returns201() throws Exception {
+        // given
+        when(userService.createUser(any(UserCreateRequest.class)))
+                .thenReturn(TestDataFactory.buildUserDto());
+        String body = objectMapper.writeValueAsString(
+                jsonRequest(TestDataFactory.USERNAME, TestDataFactory.EMAIL,
+                        TestDataFactory.PASSWORD, Set.of(RoleName.ADMIN)));
+
+        // when / then — ADMIN JSON'dan RoleName.ADMIN'e deserialize olur
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value(TestDataFactory.USERNAME));
+
+        ArgumentCaptor<UserCreateRequest> captor = ArgumentCaptor.forClass(UserCreateRequest.class);
+        verify(userService).createUser(captor.capture());
+        assertThat(captor.getValue().getRoles()).contains(RoleName.ADMIN);
+    }
+
+    @Test
+    @DisplayName("POST /api/users: ROLE_ ön ekli roller JSON'dan deserialize edilir")
+    void createUser_rolePrefixInJson_returns201() throws Exception {
+        when(userService.createUser(any(UserCreateRequest.class)))
+                .thenReturn(TestDataFactory.buildUserDto());
+        String body = """
+                {
+                  "username": "%s",
+                  "email": "%s",
+                  "password": "%s",
+                  "roles": ["ROLE_ADMIN", "ROLE_BI_SPECIALIST"]
+                }
+                """.formatted(TestDataFactory.USERNAME, TestDataFactory.EMAIL, TestDataFactory.PASSWORD);
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<UserCreateRequest> captor = ArgumentCaptor.forClass(UserCreateRequest.class);
+        verify(userService).createUser(captor.capture());
+        assertThat(captor.getValue().getRoles()).containsExactlyInAnyOrder(RoleName.ADMIN, RoleName.BI_SPECIALIST);
+    }
+
+    @Test
+    @DisplayName("POST /api/users: boşluklu username @Pattern ihlali 400 ve alan mesajı döner")
+    void createUser_usernameWithSpace_returns400WithFieldError() throws Exception {
+        String body = objectMapper.writeValueAsString(
+                jsonRequest("murat ozturk", TestDataFactory.EMAIL, TestDataFactory.PASSWORD, Set.of(RoleName.ADMIN)));
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Doğrulama hatası"))
+                .andExpect(jsonPath("$.fields.username").value(
+                        "Kullanıcı adı yalnızca harf, rakam, alt çizgi ve nokta içerebilir; boşluk kullanılamaz"));
     }
 
     @Test
